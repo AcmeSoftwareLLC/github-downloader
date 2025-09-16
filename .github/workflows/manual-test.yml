@@ -1,0 +1,21 @@
+name: Manually Test Workflow 
+
+on:
+  workflow_call:
+
+jobs:
+  download-test:
+    runs-on: ubuntu-latest
+    name: Download Test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download
+        uses: ./
+        with:
+          repo: creativetimofficial/public-assets
+          includes: |
+            argon-pro-flutter/chat-screen.jpg:app/screen.jpg
+            argon-pro-flutter/beauty-screen.jpg:next/beauty.jpg
+          output-directory: downloads
