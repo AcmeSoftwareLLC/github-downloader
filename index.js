@@ -8,8 +8,8 @@ async function run() {
   try {
     const pat = getInput("git-pat");
     const repo = getInput("repo", { required: true });
-    const ref = getInput("ref", { required: true });
-    const outputDir = getInput("output-directory", { required: true });
+    const ref = getInput("ref") || "main";
+    const outputDir = getInput("output-directory");
     const includes = getMultilineInput("includes");
 
     if (!includes.length) {
@@ -20,7 +20,12 @@ async function run() {
 
     const downloads = includes.map(async (include) => {
       const [input, output] = include.split(":");
-      const outputLocation = join(outputDir, output);
+      if (!output) {
+        throw new Error(
+          `Invalid 'includes' format: "${include}". Expected format is "source:destination".`
+        );
+      }
+      const outputLocation = outputDir ? join(outputDir, output) : output;
       const url = `https://raw.githubusercontent.com/${repo}/${ref}/${input}`;
 
       await mkdir(dirname(outputLocation), { recursive: true });
@@ -32,7 +37,7 @@ async function run() {
 
     const downloadedFiles = await Promise.all(downloads);
 
-    const allFiles = await getFiles(outputDir);
+    const allFiles = outputDir ? await getFiles(outputDir) : downloadedFiles;
 
     await summary
       .addHeading("Download Summary")
@@ -44,7 +49,7 @@ async function run() {
         ["Repo", repo],
         ["Ref", ref],
         ["Downloaded Files", downloadedFiles.join("\n")],
-        ["All Files in Output", allFiles.join("\n")],
+        ...(outputDir ? [["All Files in Output", allFiles.join("\n")]] : []),
       ])
       .write();
   } catch (error) {
@@ -55,22 +60,29 @@ async function run() {
 async function download(url, options, output) {
   return new Promise((resolve, reject) => {
     const fileStream = createWriteStream(output);
+    fileStream.on("error", reject);
 
     const req = get(url, options, (res) => {
       if (res.statusCode && res.statusCode >= 400) {
-        reject(
+        res.resume();
+        return reject(
           new Error(`Failed to download ${url} (status ${res.statusCode})`)
         );
-        res.resume();
-        return;
       }
 
       res.pipe(fileStream);
 
-      fileStream.on("finish", () => fileStream.close(resolve));
+      fileStream.on("finish", () => {
+        fileStream.close((err) => {
+          if (err) {
+            return reject(err);
+          }
+          resolve();
+        });
+      });
     });
 
-    req.on("error", (err) => reject(err));
+    req.on("error", reject);
 
     req.setTimeout(15000, () => {
       req.destroy(new Error(`Request timed out for ${url}`));
@@ -79,18 +91,13 @@ async function download(url, options, output) {
 }
 
 async function getFiles(directory) {
-  const files = await readdir(directory, { recursive: true });
-  const filePaths = [];
-
-  for (const file of files) {
-    const fullPath = join(directory, file);
-    const stats = await stat(fullPath);
-    if (stats.isFile()) {
-      filePaths.push(fullPath);
-    }
-  }
-
-  return filePaths;
+  const dirents = await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  return dirents
+    .filter((dirent) => dirent.isFile())
+    .map((dirent) => join(directory, dirent.name));
 }
 
 run();
