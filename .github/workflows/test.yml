@@ -6,14 +6,14 @@ on:
       - main
 
 jobs:
-  download-test:
+  download-success:
     runs-on: ubuntu-latest
-    name: Download Test
+    name: Download Test (Success)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download
+      - name: Download existing files
         uses: ./
         with:
           repo: creativetimofficial/public-assets
@@ -21,3 +21,26 @@ jobs:
             argon-pro-flutter/chat-screen.jpg:app/screen.jpg
             argon-pro-flutter/beauty-screen.jpg:next/beauty.jpg
           output-directory: downloads
+
+  download-failure:
+    runs-on: ubuntu-latest
+    name: Download Test (Failure)
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download non-existent file
+        id: download_step
+        uses: ./
+        with:
+          repo: creativetimofficial/public-assets
+          includes: |
+            argon-pro-flutter/this-file-does-not-exist.jpg:bad/output.jpg
+          output-directory: downloads
+
+      - name: Verify failure
+        if: steps.download_step.outcome == 'success'
+        run: |
+          echo "❌ Expected this step to fail but it succeeded"
+          exit 1
